@@ -12,46 +12,32 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
-        Dialog.resize(367, 186)
-        self.buttonBox = QtWidgets.QDialogButtonBox(parent=Dialog)
-        self.buttonBox.setGeometry(QtCore.QRect(20, 150, 341, 32))
-        self.buttonBox.setOrientation(QtCore.Qt.Orientation.Horizontal)
-        self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.StandardButton.Cancel|QtWidgets.QDialogButtonBox.StandardButton.Ok)
-        self.buttonBox.setObjectName("buttonBox")
+        Dialog.resize(164, 114)
         self.label = QtWidgets.QLabel(parent=Dialog)
-        self.label.setGeometry(QtCore.QRect(120, -10, 161, 71))
+        self.label.setGeometry(QtCore.QRect(0, -10, 161, 71))
         font = QtGui.QFont()
         font.setPointSize(15)
         self.label.setFont(font)
         self.label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.label.setObjectName("label")
-        self.dateTimeEdit = QtWidgets.QDateTimeEdit(parent=Dialog)
-        self.dateTimeEdit.setGeometry(QtCore.QRect(110, 50, 194, 22))
-        self.dateTimeEdit.setObjectName("dateTimeEdit")
-        self.widget = QtWidgets.QWidget(parent=Dialog)
-        self.widget.setGeometry(QtCore.QRect(70, 80, 251, 41))
-        self.widget.setObjectName("widget")
-        self.horizontalLayout = QtWidgets.QHBoxLayout(self.widget)
-        self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-        self.pushButton = QtWidgets.QPushButton(parent=self.widget)
-        self.pushButton.setObjectName("pushButton")
-        self.horizontalLayout.addWidget(self.pushButton)
-        self.pushButton_2 = QtWidgets.QPushButton(parent=self.widget)
-        self.pushButton_2.setObjectName("pushButton_2")
-        self.horizontalLayout.addWidget(self.pushButton_2)
+        self.timeEdit = QtWidgets.QTimeEdit(parent=Dialog)
+        self.timeEdit.setGeometry(QtCore.QRect(20, 50, 118, 22))
+        self.timeEdit.setObjectName("timeEdit")
+        self.buttonBox = QtWidgets.QDialogButtonBox(parent=Dialog)
+        self.buttonBox.setGeometry(QtCore.QRect(-90, 80, 249, 23))
+        self.buttonBox.setOrientation(QtCore.Qt.Orientation.Horizontal)
+        self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.StandardButton.Cancel|QtWidgets.QDialogButtonBox.StandardButton.Ok)
+        self.buttonBox.setObjectName("buttonBox")
 
         self.retranslateUi(Dialog)
-        self.buttonBox.accepted.connect(Dialog.accept) # type: ignore
         self.buttonBox.rejected.connect(Dialog.reject) # type: ignore
+        self.buttonBox.accepted.connect(Dialog.accept) # type: ignore
         QtCore.QMetaObject.connectSlotsByName(Dialog)
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
         Dialog.setWindowTitle(_translate("Dialog", "Dialog"))
         self.label.setText(_translate("Dialog", "Set Reminders"))
-        self.pushButton.setText(_translate("Dialog", "Daily"))
-        self.pushButton_2.setText(_translate("Dialog", "Weekly"))
 
 
 if __name__ == "__main__":
