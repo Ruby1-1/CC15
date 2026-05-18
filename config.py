@@ -9,7 +9,7 @@ DEFAULT_DAILY_GOALS = {
 }
 
 # Database settings
-DATABASE_PATH = "habitéats.db"
+DATABASE_PATH = "habiteats_entries.csv"
 
 # Reminder check interval (seconds)
 REMINDER_CHECK_INTERVAL = 30

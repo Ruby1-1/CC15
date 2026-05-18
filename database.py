@@ -1,273 +1,267 @@
-"""Database module for HabitEats - handles SQLite persistence"""
+"""CSV storage module for HabitEats - handles file persistence."""
 
-import sqlite3
-import json
+import csv
 from datetime import datetime
 from pathlib import Path
 
 
 class Database:
-    def __init__(self, db_path="habitéats.db"):
-        self.db_path = db_path
-        self.init_database()
+    def __init__(self, db_path="habiteats_entries.csv"):
+        self.db_path = Path(db_path)
+        self.goals_path = self.db_path.parent / "habiteats_goals.csv"
+        self.reminders_path = self.db_path.parent / "habiteats_reminders.csv"
+        self.init_storage()
 
-    def get_connection(self):
-        """Get a database connection"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def init_storage(self):
+        """Initialize CSV storage files and headers."""
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def init_database(self):
-        """Initialize database tables"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        self._ensure_csv(
+            self.db_path,
+            ["id", "food_name", "calories", "protein", "fat", "carbs", "created_at", "date"],
+        )
+        self._ensure_csv(
+            self.goals_path,
+            ["date", "target_calories", "target_protein", "target_fat", "target_carbs"],
+        )
+        self._ensure_csv(
+            self.reminders_path,
+            ["id", "reminder_type", "datetime", "is_active", "created_at"],
+        )
 
-        # Macro entries table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS macro_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                food_name TEXT NOT NULL,
-                calories REAL NOT NULL,
-                protein REAL NOT NULL,
-                fat REAL NOT NULL,
-                carbs REAL NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                date DATE NOT NULL
-            )
-        """)
+    def _ensure_csv(self, path: Path, headers):
+        if not path.exists():
+            with path.open("w", newline="", encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerow(headers)
 
-        # Reminders table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS reminders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                reminder_type TEXT NOT NULL,
-                datetime TIMESTAMP NOT NULL,
-                is_active BOOLEAN DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+    def _read_rows(self, path: Path):
+        if not path.exists():
+            return []
+        with path.open("r", newline="", encoding="utf-8") as file:
+            reader = csv.DictReader(file)
+            return [row for row in reader]
 
-        # Daily goals table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS daily_goals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date DATE NOT NULL UNIQUE,
-                target_calories REAL DEFAULT 2000,
-                target_protein REAL DEFAULT 150,
-                target_fat REAL DEFAULT 70,
-                target_carbs REAL DEFAULT 250
-            )
-        """)
+    def _write_rows(self, path: Path, rows, headers):
+        with path.open("w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=headers)
+            writer.writeheader()
+            writer.writerows(rows)
 
-        conn.commit()
-        conn.close()
+    def _next_id(self, rows):
+        if not rows:
+            return 1
+        existing_ids = [int(row.get("id", 0)) for row in rows if row.get("id")]
+        return max(existing_ids, default=0) + 1
 
     # ===== MACRO ENTRIES =====
     def add_entry(self, food_name, calories, protein, fat, carbs, date=None):
-        """Add a macro entry to the database"""
+        """Add a macro entry to the CSV store."""
         if date is None:
             date = datetime.now().strftime("%Y-%m-%d")
 
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        rows = self._read_rows(self.db_path)
+        entry_id = self._next_id(rows)
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        try:
-            cursor.execute("""
-                INSERT INTO macro_entries 
-                (food_name, calories, protein, fat, carbs, date)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (food_name, calories, protein, fat, carbs, date))
-            conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error adding entry: {e}")
-            return False
-        finally:
-            conn.close()
+        rows.append(
+            {
+                "id": str(entry_id),
+                "food_name": food_name,
+                "calories": str(calories),
+                "protein": str(protein),
+                "fat": str(fat),
+                "carbs": str(carbs),
+                "created_at": created_at,
+                "date": date,
+            }
+        )
+
+        self._write_rows(
+            self.db_path,
+            rows,
+            ["id", "food_name", "calories", "protein", "fat", "carbs", "created_at", "date"],
+        )
+        return True
 
     def get_entries(self, date=None):
-        """Get all entries for a specific date"""
+        """Get all entries for a specific date."""
         if date is None:
             date = datetime.now().strftime("%Y-%m-%d")
 
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        rows = self._read_rows(self.db_path)
+        entries = [
+            {
+                "id": int(row["id"]),
+                "food_name": row["food_name"],
+                "calories": float(row["calories"]),
+                "protein": float(row["protein"]),
+                "fat": float(row["fat"]),
+                "carbs": float(row["carbs"]),
+                "created_at": row["created_at"],
+                "date": row["date"],
+            }
+            for row in rows
+            if row["date"] == date
+        ]
 
-        cursor.execute("""
-            SELECT * FROM macro_entries WHERE date = ? ORDER BY created_at DESC
-        """, (date,))
-
-        rows = cursor.fetchall()
-        conn.close()
-
-        return [dict(row) for row in rows]
+        return sorted(entries, key=lambda item: item["created_at"], reverse=True)
 
     def get_daily_totals(self, date=None):
-        """Get total macros for a specific date"""
+        """Get total macros for a specific date."""
         if date is None:
             date = datetime.now().strftime("%Y-%m-%d")
 
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        rows = self._read_rows(self.db_path)
+        totals = {"calories": 0.0, "protein": 0.0, "fat": 0.0, "carbs": 0.0}
 
-        cursor.execute("""
-            SELECT 
-                SUM(calories) as total_calories,
-                SUM(protein) as total_protein,
-                SUM(fat) as total_fat,
-                SUM(carbs) as total_carbs
-            FROM macro_entries WHERE date = ?
-        """, (date,))
+        for row in rows:
+            if row["date"] != date:
+                continue
+            totals["calories"] += float(row["calories"])
+            totals["protein"] += float(row["protein"])
+            totals["fat"] += float(row["fat"])
+            totals["carbs"] += float(row["carbs"])
 
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            return {
-                "calories": row["total_calories"] or 0,
-                "protein": row["total_protein"] or 0,
-                "fat": row["total_fat"] or 0,
-                "carbs": row["total_carbs"] or 0,
-            }
-        return {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
+        return totals
 
     def clear_entries(self, date=None):
-        """Clear all entries for a specific date"""
+        """Clear all entries for a specific date."""
         if date is None:
             date = datetime.now().strftime("%Y-%m-%d")
 
-        conn = self.get_connection()
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute("DELETE FROM macro_entries WHERE date = ?", (date,))
-            conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error clearing entries: {e}")
-            return False
-        finally:
-            conn.close()
+        rows = self._read_rows(self.db_path)
+        filtered = [row for row in rows if row["date"] != date]
+        self._write_rows(
+            self.db_path,
+            filtered,
+            ["id", "food_name", "calories", "protein", "fat", "carbs", "created_at", "date"],
+        )
+        return True
 
     def delete_entry(self, entry_id):
-        """Delete a specific entry"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute("DELETE FROM macro_entries WHERE id = ?", (entry_id,))
-            conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error deleting entry: {e}")
-            return False
-        finally:
-            conn.close()
+        """Delete a specific entry."""
+        rows = self._read_rows(self.db_path)
+        filtered = [row for row in rows if int(row["id"]) != int(entry_id)]
+        self._write_rows(
+            self.db_path,
+            filtered,
+            ["id", "food_name", "calories", "protein", "fat", "carbs", "created_at", "date"],
+        )
+        return True
 
     # ===== REMINDERS =====
     def add_reminder(self, reminder_type, datetime_str):
-        """Add a reminder (daily or weekly)"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        """Add a reminder (daily or weekly)."""
+        rows = self._read_rows(self.reminders_path)
+        reminder_id = self._next_id(rows)
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        try:
-            cursor.execute("""
-                INSERT INTO reminders (reminder_type, datetime, is_active)
-                VALUES (?, ?, 1)
-            """, (reminder_type, datetime_str))
-            conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error adding reminder: {e}")
-            return False
-        finally:
-            conn.close()
+        rows.append(
+            {
+                "id": str(reminder_id),
+                "reminder_type": reminder_type,
+                "datetime": datetime_str,
+                "is_active": "1",
+                "created_at": created_at,
+            }
+        )
+
+        self._write_rows(
+            self.reminders_path,
+            rows,
+            ["id", "reminder_type", "datetime", "is_active", "created_at"],
+        )
+        return True
 
     def get_reminders(self):
-        """Get all active reminders"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT * FROM reminders WHERE is_active = 1 ORDER BY datetime
-        """)
-
-        rows = cursor.fetchall()
-        conn.close()
-
-        return [dict(row) for row in rows]
+        """Get all reminders."""
+        rows = self._read_rows(self.reminders_path)
+        reminders = [
+            {
+                "id": int(row["id"]),
+                "reminder_type": row["reminder_type"],
+                "datetime": row["datetime"],
+                "is_active": bool(int(row["is_active"])),
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+        return sorted(reminders, key=lambda item: item["datetime"])
 
     def toggle_reminder(self, reminder_id, is_active):
-        """Enable/disable a reminder"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute("""
-                UPDATE reminders SET is_active = ? WHERE id = ?
-            """, (is_active, reminder_id))
-            conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error updating reminder: {e}")
-            return False
-        finally:
-            conn.close()
+        """Enable/disable a reminder."""
+        rows = self._read_rows(self.reminders_path)
+        for row in rows:
+            if int(row["id"]) == int(reminder_id):
+                row["is_active"] = "1" if is_active else "0"
+        self._write_rows(
+            self.reminders_path,
+            rows,
+            ["id", "reminder_type", "datetime", "is_active", "created_at"],
+        )
+        return True
 
     def delete_reminder(self, reminder_id):
-        """Delete a reminder"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
-            conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error deleting reminder: {e}")
-            return False
-        finally:
-            conn.close()
+        """Delete a reminder."""
+        rows = self._read_rows(self.reminders_path)
+        filtered = [row for row in rows if int(row["id"]) != int(reminder_id)]
+        self._write_rows(
+            self.reminders_path,
+            filtered,
+            ["id", "reminder_type", "datetime", "is_active", "created_at"],
+        )
+        return True
 
     # ===== DAILY GOALS =====
     def set_daily_goals(self, date, target_calories, target_protein, target_fat, target_carbs):
-        """Set daily macro goals"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        """Set daily macro goals."""
+        rows = self._read_rows(self.goals_path)
+        replaced = False
 
-        try:
-            cursor.execute("""
-                INSERT OR REPLACE INTO daily_goals 
-                (date, target_calories, target_protein, target_fat, target_carbs)
-                VALUES (?, ?, ?, ?, ?)
-            """, (date, target_calories, target_protein, target_fat, target_carbs))
-            conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error setting goals: {e}")
-            return False
-        finally:
-            conn.close()
+        for row in rows:
+            if row["date"] == date:
+                row["target_calories"] = str(target_calories)
+                row["target_protein"] = str(target_protein)
+                row["target_fat"] = str(target_fat)
+                row["target_carbs"] = str(target_carbs)
+                replaced = True
+                break
+
+        if not replaced:
+            rows.append(
+                {
+                    "date": date,
+                    "target_calories": str(target_calories),
+                    "target_protein": str(target_protein),
+                    "target_fat": str(target_fat),
+                    "target_carbs": str(target_carbs),
+                }
+            )
+
+        self._write_rows(
+            self.goals_path,
+            rows,
+            ["date", "target_calories", "target_protein", "target_fat", "target_carbs"],
+        )
+        return True
 
     def get_daily_goals(self, date=None):
-        """Get daily goals for a specific date"""
+        """Get daily goals for a specific date."""
         if date is None:
             date = datetime.now().strftime("%Y-%m-%d")
 
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        rows = self._read_rows(self.goals_path)
+        for row in rows:
+            if row["date"] == date:
+                return {
+                    "date": row["date"],
+                    "target_calories": float(row["target_calories"]),
+                    "target_protein": float(row["target_protein"]),
+                    "target_fat": float(row["target_fat"]),
+                    "target_carbs": float(row["target_carbs"]),
+                }
 
-        cursor.execute("""
-            SELECT * FROM daily_goals WHERE date = ?
-        """, (date,))
-
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            return dict(row)
-
-        # Return default goals if not set
         return {
             "date": date,
             "target_calories": 2000,
@@ -275,3 +269,28 @@ class Database:
             "target_fat": 70,
             "target_carbs": 250,
         }
+
+    def export_to_csv(self, filename="habit_eats_backup.csv"):
+        """Create a backup CSV copy of macro entries."""
+        rows = self._read_rows(self.db_path)
+        if not rows:
+            with open(filename, mode="w", newline="", encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerow(["Food Name", "Calories", "Protein (g)", "Fat (g)", "Carbs (g)", "Date"])
+            return True
+
+        with open(filename, mode="w", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow(["Food Name", "Calories", "Protein (g)", "Fat (g)", "Carbs (g)", "Date"])
+            for row in rows:
+                writer.writerow(
+                    [
+                        row["food_name"],
+                        row["calories"],
+                        row["protein"],
+                        row["fat"],
+                        row["carbs"],
+                        row["date"],
+                    ]
+                )
+        return True
